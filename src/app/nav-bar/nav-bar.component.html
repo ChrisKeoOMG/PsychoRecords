@@ -1,0 +1,60 @@
+<nav class="navbar navbar-expand-lg navbar-dark custom-navbar">
+  <div class="container">
+    <a class="navbar-brand" [routerLink]="['/inicio']"></a>
+
+    <!-- BOTÓN HAMBURGUESA -->
+    <button
+  class="navbar-toggler custom-toggler"
+  type="button"
+  data-bs-toggle="collapse"
+  data-bs-target="#navbarSupportedContent"
+  aria-controls="navbarSupportedContent"
+  aria-expanded="false"
+  aria-label="Toggle navigation"
+>
+  <span class="toggler-icon"></span>
+  <span class="toggler-icon"></span>
+  <span class="toggler-icon"></span>
+</button>
+
+
+    <!-- MENÚ -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 links">
+
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/inicio']">Inicio</a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/qya']">Q&A</a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link" [routerLink]="['/nosotros']">Nosotros</a>
+        </li>
+
+        <li class="nav-item">
+            <a [routerLink]="['/login']" class="nav-link" title="Iniciar sesión" aria-label="Iniciar sesión">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="40"
+                height="40"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0" />
+                <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+              </svg>
+            </a>
+          </li>
+
+      </ul>
+    </div>
+
+  </div>
+</nav>

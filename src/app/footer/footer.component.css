@@ -8,7 +8,7 @@ footer {
     gap: 20px;
 }
 
-footer > div {
+footer>div {
     flex: 1 1 200px;
 }
 
@@ -30,17 +30,18 @@ footer a {
 }
 
 footer a:hover {
-    color: #2f7d28; 
+    color: #2f7d28;
 }
 
 footer svg {
     width: 32px;
     height: 32px;
 }
+
 .social-media-container {
     display: flex;
     flex-direction: row;
     gap: 10px;
-    margin-left: 11rem ;
+    margin-left: 11rem;
     align-items: center;
 }

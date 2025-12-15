@@ -16,7 +16,25 @@ const db = require('../db');
 const crearVenta = async (req, res) => {
     const { idusuario, idpunto, productos } = req.body;
 
-    console.log(idusuario, idpunto, productos);
+    // pre validacion de stock usando funcion
+    try {
+        for (const item of productos) {
+            const { idprod, cantidad } = item;
+
+            // Llama a la función SQL para verificar el stock
+            // Si la función lanza una excepción (stock insuficiente), se detiene aquí.
+            await db.query('SELECT verificar_stock_disponible($1, $2)', [idprod, cantidad]);
+
+            console.log(`Stock verificado para idProd ${idprod}.`);
+        }
+    } catch (error) {
+        // Captura la excepción lanzada por la función SQL
+        console.error('Error de pre-validación de stock:', error.message);
+        return res.status(400).json({ // Usamos 400 Bad Request para errores de datos
+            message: 'Falló la validación de stock.',
+            error: error.message
+        });
+    }
 
     // 1. Obtener un cliente para la transacción
     const client = await db.getClient();
@@ -131,17 +149,17 @@ const getVentasByUsuario = async (req, res) => {
 
 const cancelarVenta = async (req, res) => {
     // Declarar con let en el ámbito más alto de la función
-    let idVentaStr; 
+    let idVentaStr;
     let idVenta;
 
     try {
         // 1. Lectura del parámetro (usando el nombre minúsculas de la ruta)
-        idVentaStr = req.params.idventa; 
-        const idAdmin = req.header('x-user-id'); 
+        idVentaStr = req.params.idventa;
+        const idAdmin = req.header('x-user-id');
 
         // 2. Validación y Conversión (Previene el error de tipo integer)
         if (!idVentaStr || isNaN(Number(idVentaStr))) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: 'Error: El ID de venta proporcionado no es un número válido o está ausente.',
                 url: req.originalUrl // Útil para depuración
             });
@@ -153,7 +171,7 @@ const cancelarVenta = async (req, res) => {
         await db.query(queryText, [idVenta, idAdmin]); // Usamos el número
 
         // 4. Éxito
-        res.status(200).json({ 
+        res.status(200).json({
             message: `Venta #${idVenta} cancelada y stock revertido con éxito.`,
             idVenta: idVenta
         });
@@ -161,11 +179,11 @@ const cancelarVenta = async (req, res) => {
     } catch (error) {
         // 5. Manejo de Error: idVenta está garantizado que existe aquí
         console.error(`Error al cancelar venta ${idVenta}:`, error.message);
-        
+
         // Manejo de errores de PL/pgSQL
-        let errorMessage = error.message.includes('Falló') ? 
-                            error.message.split('ERROR:  ')[1] : 
-                            'Error desconocido al intentar cancelar la venta.';
+        let errorMessage = error.message.includes('Falló') ?
+            error.message.split('ERROR:  ')[1] :
+            'Error desconocido al intentar cancelar la venta.';
 
         res.status(400).json({ message: errorMessage });
     }
@@ -175,7 +193,7 @@ const cancelarVenta = async (req, res) => {
 
 const getTodasLasVentas = async (req, res) => {
     // Nota: El middleware verificarAdmin ya protege esta ruta.
-    
+
     // Consulta simple a la VISTA sin filtro por usuario
     const queryText = `
         SELECT 
@@ -189,10 +207,10 @@ const getTodasLasVentas = async (req, res) => {
         FROM vw_historial_ventas 
         ORDER BY "fecha" DESC;
     `;
-    
+
     try {
         const result = await db.query(queryText);
-        
+
         const ventas = result.rows.map(venta => ({
             idventa: venta.idventa,
             fecha: venta.fecha,
@@ -200,7 +218,7 @@ const getTodasLasVentas = async (req, res) => {
             estadopedido: venta.estadopedido,
             nombrepunto: venta.nombrepunto,
             direccionCompleta: venta.direccioncompleta,
-            detalles: venta.detalles 
+            detalles: venta.detalles
             // Podrías añadir V.idusuario si lo necesitas en el frontend
         }));
 

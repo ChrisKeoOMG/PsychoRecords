@@ -10,6 +10,7 @@ import { CheckoutComponent } from './checkout/checkout.component';
 import { HistorialComponent } from './historial/historial.component';
 import { InventarioComponent } from './inventario/inventario.component';
 import { ReportesComponent } from './reportes/reportes.component';
+import { GestionUsuariosComponent } from './gestion-usuarios/gestion-usuarios.component';
 
 export const routes: Routes = [
     { path: 'inicio', component: InicioComponent },
@@ -22,6 +23,7 @@ export const routes: Routes = [
     { path: 'checkout', component: CheckoutComponent },
     { path: 'historial', component: HistorialComponent },
     { path: 'admin/inventario', component: InventarioComponent },
-    {path: 'admin/reportes',component: ReportesComponent},
+    { path: 'admin/reportes', component: ReportesComponent },
+    { path: 'admin/usuarios', component: GestionUsuariosComponent },
     { path: '**', pathMatch: 'full', redirectTo: 'inicio' },
 ];

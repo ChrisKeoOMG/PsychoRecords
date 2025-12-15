@@ -111,7 +111,6 @@ FROM "venta" V
 JOIN "puntoentrega" PE ON V."idpunto" = PE."idpunto"
 JOIN "detalleventa" DV ON V."idventa" = DV."idventa"
 JOIN "producto" P ON DV."idprod" = P."idprod"
-
 GROUP BY 
     V."idventa", 
     V."idusuario",
@@ -346,4 +345,65 @@ AFTER UPDATE ON producto
 FOR EACH ROW
 EXECUTE FUNCTION fn_auditar_stock();
 
--- (Nota: Para insertar una venta y su detalle, primero necesitas saber los IDs generados arriba)
+-- Creacion de Indice en tabla producto y columna cantstock
+CREATE OR REPLACE INDEX idx_cantstock ON producto(cantstock);
+
+
+ 
+-- Función: verificar_correo_existente
+-- Retorna TRUE si el correo ya está en uso por otro ID, FALSE si está disponible.
+CREATE OR REPLACE FUNCTION verificar_correo_existente(
+    p_correo_electronico TEXT,
+    p_id_usuario_excluir INT DEFAULT NULL -- ID que puede poseer el correo (usado en PUT/Update)
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_existe BOOLEAN;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1 
+        FROM "usuario" u
+        WHERE u."correoelectronico" = p_correo_electronico
+          -- Excluir el propio ID si se está actualizando
+          AND u."idusuario" != COALESCE(p_id_usuario_excluir, 0)
+    ) INTO v_existe;
+
+    RETURN v_existe;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Función: verificar_stock_disponible
+-- Verifica si hay suficiente stock para un producto dado.
+-- Si no hay suficiente stock, lanza una excepción que puede ser capturada por el backend.
+
+CREATE OR REPLACE FUNCTION verificar_stock_disponible(
+    p_id_prod INT,
+    p_cantidad_requerida INT
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_stock_actual INT;
+    v_producto_titulo TEXT;
+BEGIN
+    -- 1. Obtener el stock actual y el título del producto
+    SELECT "cantstock", titulo 
+    INTO v_stock_actual, v_producto_titulo
+    FROM "producto" 
+    WHERE "idprod" = p_id_prod;
+
+    -- 2. Verificar si el producto existe
+    IF v_stock_actual IS NULL THEN
+        RAISE EXCEPTION 'Producto con ID % no encontrado.', p_id_prod;
+    END IF;
+
+    -- 3. Verificar el stock
+    IF v_stock_actual < p_cantidad_requerida THEN
+        -- Lanzar una excepción con un mensaje detallado
+        RAISE EXCEPTION 'Stock insuficiente para "%". Stock disponible: %, Requerido: %.',
+        v_producto_titulo, v_stock_actual, p_cantidad_requerida;
+    END IF;
+
+    -- Si todo es correcto, retorna TRUE
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;

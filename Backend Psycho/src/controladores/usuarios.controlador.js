@@ -19,6 +19,15 @@ const registrarUsuario = async (req, res) => {
     const values = [nombre, apellidoP, apellidoM, correoElectronico, password, telefono, CP, calle, colonia, numCasa, ciudad, estado];
 
     try {
+        const existsResult = await db.query(
+            'SELECT verificar_correo_existente($1, $2) AS exists',
+            [correoElectronico, null]
+        );
+
+        if (existsResult.rows[0].exists) {
+            return res.status(409).json({ message: 'El correo electrónico ya pertenece a otra cuenta.' });
+        }
+
         const result = await db.query(queryText, values);
         const nuevoUsuario = result.rows[0];
 
@@ -104,8 +113,130 @@ const loginUsuario = async (req, res) => {
     }
 };
 
+/**
+ * [GET] /api/usuarios - Obtener la lista completa de usuarios (Admin)
+ */
+const getAllUsers = async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT 
+                "idusuario", nombre, "apellidop", "apellidom", 
+                "correoelectronico", telefono, rol, 
+                "cp", calle, colonia, "numcasa", ciudad, estado
+            FROM 
+                "usuario"
+            ORDER BY "idusuario" DESC
+        `);
+        // Adaptamos los nombres de columna a CamelCase en la respuesta para el frontend
+        const users = result.rows.map(row => ({
+            idUsuario: row.idusuario,
+            nombre: row.nombre,
+            apellidoP: row.apellidop,
+            apellidoM: row.apellidom,
+            correoElectronico: row.correoelectronico,
+            telefono: row.telefono,
+            rol: row.rol,
+            CP: row.cp,
+            calle: row.calle,
+            colonia: row.colonia,
+            numCasa: row.numcasa,
+            ciudad: row.ciudad,
+            estado: row.estado
+        }));
+        res.json(users);
+    } catch (err) {
+        console.error('Error al obtener todos los usuarios:', err);
+        res.status(500).json({ message: 'Error interno del servidor al listar usuarios.' });
+    }
+};
+
+/**
+ * [PUT] /api/usuarios/:id - Actualizar datos del usuario (Admin/Propio)
+ */
+const updateUser = async (req, res) => {
+    const { id } = req.params;
+    // El rol se incluirá aquí para que el Admin pueda cambiarlo.
+    const {
+        nombre, apellidoP, apellidoM, correoElectronico,
+        telefono, rol, CP, calle, colonia, numCasa, ciudad, estado
+    } = req.body;
+
+    try {
+        const existsResult = await db.query(
+            'SELECT verificar_correo_existente($1, $2) AS exists',
+            [correoElectronico, id]
+        );
+
+        if (existsResult.rows[0].exists) {
+            return res.status(409).json({ message: 'El correo electrónico ya pertenece a otra cuenta.' });
+        }
+
+        const result = await db.query(`
+            UPDATE "usuario" SET 
+                nombre = $1, 
+                "apellidop" = $2, 
+                "apellidom" = $3, 
+                "correoelectronico" = $4, 
+                telefono = $5, 
+                rol = $6,
+                "cp" = $7,
+                calle = $8,
+                colonia = $9,
+                "numcasa" = $10,
+                ciudad = $11,
+                estado = $12
+            WHERE 
+                "idusuario" = $13
+            RETURNING "idusuario"
+        `, [
+            nombre, apellidoP, apellidoM, correoElectronico,
+            telefono, rol, CP, calle, colonia, numCasa, ciudad, estado, id
+        ]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ message: 'Usuario no encontrado.' });
+        }
+
+        res.json({ message: `Usuario ID ${id} actualizado exitosamente.`, idUsuario: id });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ message: 'El correo electrónico ya está registrado en otra cuenta.' });
+        }
+        console.error(`Error al actualizar usuario ${id}:`, err);
+        res.status(500).json({ message: 'Error interno del servidor al actualizar.' });
+    }
+};
+
+/**
+ * [DELETE] /api/usuarios/:id - Eliminar/Desactivar un usuario (Admin)
+ */
+const deleteUser = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await db.query(`
+            DELETE FROM "usuario" WHERE "idusuario" = $1
+        `, [id]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ message: 'Usuario no encontrado.' });
+        }
+
+        res.json({ message: `Usuario ID ${id} eliminado exitosamente.` });
+    } catch (err) {
+        if (err.code === '23503') {
+            return res.status(400).json({ message: 'No se puede eliminar el usuario porque tiene pedidos asociados.' });
+        }
+        console.error(`Error al eliminar usuario ${id}:`, err);
+        res.status(500).json({ message: 'Error interno del servidor al eliminar.' });
+    }
+};
+
+
 module.exports = {
     registrarUsuario,
     getUsuarioById,
-    loginUsuario
+    loginUsuario,
+    getAllUsers,
+    updateUser,
+    deleteUser
 };

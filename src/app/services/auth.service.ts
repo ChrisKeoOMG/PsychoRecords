@@ -1,6 +1,6 @@
 // src/app/core/auth/auth.service.ts
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, tap } from 'rxjs'; // Asume que tienes un archivo de entorno
 
 // Interface para el objeto de usuario (coincide con la respuesta de tu API)
@@ -9,6 +9,22 @@ export interface UserAuth {
   nombre: string;
   correoElectronico: string;
   rol: 'cliente' | 'admin'; // Añadimos el rol aquí
+}
+
+export interface UserAdmin {
+  idUsuario: number;
+  nombre: string;
+  apellidoP: string;
+  apellidoM: string | null;
+  correoElectronico: string;
+  telefono: string | null;
+  CP: string | null;
+  calle: string | null;
+  colonia: string | null;
+  numCasa: string | null;
+  ciudad: string | null;
+  estado: string | null;
+  rol: 'cliente' | 'admin';
 }
 
 @Injectable({
@@ -89,5 +105,57 @@ export class AuthService {
   getAuthHeader(): string | null {
     const user = this.userSubject.getValue();
     return user ? String(user.idUsuario) : null;
+  }
+
+  /**
+   * Obtiene la lista completa de usuarios (Solo Admin).
+   * GET /api/usuarios
+   */
+  getAllUsers(): Observable<UserAdmin[]> {
+    const headers = this.getAdminHeaders();
+    // El Interceptor añadirá el 'x-user-id' del administrador logueado
+    return this.http.get<UserAdmin[]>(`${this.apiUrl}`, { headers });
+  }
+
+  /**
+   * Obtiene un usuario por ID (Solo Admin).
+   * GET /api/usuarios/:id
+   */
+  getUserById(id: number): Observable<UserAdmin> {
+    const headers = this.getAdminHeaders();
+    return this.http.get<UserAdmin>(`${this.apiUrl}/${id}`, { headers });
+  }
+
+  /**
+   * Actualiza los datos de un usuario (incluye rol).
+   * PUT /api/usuarios/:id
+   */
+  updateUser(id: number, userData: Partial<UserAdmin>): Observable<any> {
+    // El Interceptor añadirá el 'x-user-id' del administrador
+    const headers = this.getAdminHeaders();
+    return this.http.put<any>(`${this.apiUrl}/${id}`, userData, { headers });
+  }
+
+  /**
+   * Elimina/Desactiva un usuario.
+   * DELETE /api/usuarios/:id
+   */
+  deleteUser(id: number): Observable<any> {
+    // Nota: Dependiendo de tu lógica de negocio, esto podría ser una eliminación suave (soft delete).
+    const headers = this.getAdminHeaders();
+    return this.http.delete<any>(`${this.apiUrl}/${id}`, { headers });
+  }
+
+  /**
+ * Configura las cabeceras necesarias para las peticiones de administrador.
+ * La API de Node.js espera 'x-user-id'.
+ */
+  private getAdminHeaders(): HttpHeaders {
+    const userId = this.getAuthHeader();
+    return new HttpHeaders({
+      'Content-Type': 'application/json',
+      // Simulación de autenticación de administrador con el ID del usuario logueado
+      'x-user-id': userId || ''
+    });
   }
 }

@@ -9,6 +9,7 @@ import { CarritoComponent } from './carrito/carrito.component';
 import { CheckoutComponent } from './checkout/checkout.component';
 import { HistorialComponent } from './historial/historial.component';
 import { InventarioComponent } from './inventario/inventario.component';
+import { ReportesComponent } from './reportes/reportes.component';
 
 export const routes: Routes = [
     { path: 'inicio', component: InicioComponent },
@@ -21,5 +22,6 @@ export const routes: Routes = [
     { path: 'checkout', component: CheckoutComponent },
     { path: 'historial', component: HistorialComponent },
     { path: 'admin/inventario', component: InventarioComponent },
+    {path: 'admin/reportes',component: ReportesComponent},
     { path: '**', pathMatch: 'full', redirectTo: 'inicio' },
 ];

@@ -80,6 +80,270 @@ INSERT INTO Usuario (nombre, apellidoP, correoElectronico)
 VALUES ('Juan', 'Perez', 'juan@email.com');
 
 INSERT INTO Usuario (nombre, apellidoP, correoElectronico, "password", rol) 
+VALUES ('Enrique', 'Amador', 'kike@email.com', 'admin', 'admin');
+
+INSERT INTO Usuario (nombre, apellidoP, correoElectronico, "password", rol) 
+VALUES ('Enrique', 'Macias', 'kike2@email.com', 'admin', 'user');
+
+
+INSERT INTO Usuario (nombre, apellidoP, correoElectronico, "password", rol) 
 VALUES ('Kim', 'Marmolejo', 'kim@email.com', 'admin', 'admin');
+
+CREATE OR REPLACE VIEW vw_historial_ventas AS
+SELECT 
+    V."idventa", 
+    V."idusuario", -- Mantener el idusuario para poder filtrar
+    V."fecha", 
+    V."totalventa", 
+    V."estadopedido",
+    PE."nombrepunto", 
+    PE."direccioncompleta",
+    json_agg(
+        json_build_object(
+            'iddetalle', DV."iddetalle",
+            'titulo', P."titulo",
+            'artista', P."artista",
+            'cantidad', DV."cantidad",
+            'precioUnitario', DV."preciounitario"
+        )
+    ) AS detalles
+FROM "venta" V
+JOIN "puntoentrega" PE ON V."idpunto" = PE."idpunto"
+JOIN "detalleventa" DV ON V."idventa" = DV."idventa"
+JOIN "producto" P ON DV."idprod" = P."idprod"
+
+GROUP BY 
+    V."idventa", 
+    V."idusuario",
+    PE."idpunto"
+ORDER BY V."fecha" DESC;
+
+CREATE OR REPLACE VIEW vw_productos_rentables AS
+SELECT
+    P.idprod,
+    P.titulo,
+    P.artista,
+    P.formato,
+    P.precio AS precio_catalogo_actual,
+    SUM(DV.cantidad) AS total_unidades_vendidas,
+    SUM(DV.cantidad * DV.preciounitario) AS total_ingreso_generado
+FROM
+    producto P
+JOIN
+    detalleventa DV ON P.idprod = DV.idprod
+GROUP BY
+    P.idprod,
+    P.titulo,
+    P.artista,
+    P.formato,
+    P.precio
+ORDER BY
+    total_unidades_vendidas DESC, total_ingreso_generado DESC;
+
+CREATE OR REPLACE VIEW vw_ventas_por_formato AS
+SELECT
+    -- Agrupamos por Artista y Formato. El ROLLUP generará filas NULL para los subtotales.
+    P.artista,
+    P.formato,
+    COUNT(DISTINCT V.idventa) AS total_ordenes,
+    SUM(DV.cantidad) AS total_unidades_vendidas,
+    SUM(DV.cantidad * DV.preciounitario) AS ingreso_bruto
+FROM
+    venta V
+JOIN
+    detalleventa DV ON V.idventa = DV.idventa
+JOIN
+    producto P ON DV.idprod = P.idprod
+GROUP BY
+    ROLLUP(P.artista, P.formato) -- ¡La clave para subtotales!
+ORDER BY
+    P.artista NULLS LAST, -- Pone el total general al final del artista
+    P.formato NULLS LAST;
+
+
+-- Función de Procedimiento para Cancelar una Venta y Revertir el Inventario
+-- Debe ejecutarse desde el backend de Node.js
+CREATE OR REPLACE PROCEDURE sp_cancelar_venta(
+    p_id_venta INT,
+    p_id_usuario_admin INT  -- Quién realiza la cancelación (para auditoría)
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    -- Cursor para obtener los productos y cantidades de la venta
+    c_detalles CURSOR FOR
+        SELECT idprod, cantidad 
+        FROM detalleventa 
+        WHERE idventa = p_id_venta;
+
+    v_id_prod INT;
+    v_cantidad_devuelta INT;
+    v_estado_actual VARCHAR(50);
+
+BEGIN
+    -- 1. Iniciar Transacción (PL/pgSQL maneja el COMMIT/ROLLBACK implícitamente en el bloque)
+    
+    -- 2. Verificar el estado actual de la venta
+    SELECT estadopedido INTO v_estado_actual 
+    FROM venta 
+    WHERE idventa = p_id_venta;
+
+    IF v_estado_actual IS NULL THEN
+        RAISE EXCEPTION 'ERROR: Venta % no encontrada.', p_id_venta;
+    ELSIF v_estado_actual = 'CANCELADO' THEN
+        RAISE EXCEPTION 'ERROR: Venta % ya ha sido cancelada.', p_id_venta;
+    END IF;
+
+    -- 3. Recorrer los detalles de la venta y revertir el stock (USO DE CURSOR)
+    OPEN c_detalles;
+    
+    LOOP
+        FETCH c_detalles INTO v_id_prod, v_cantidad_devuelta;
+        EXIT WHEN NOT FOUND;
+
+        -- Devolver la cantidad al inventario (UPDATE)
+        UPDATE producto
+        SET cantstock = cantstock + v_cantidad_devuelta
+        WHERE idprod = v_id_prod;
+
+        -- (Opcional: Si implementaste un LOG, podrías insertar aquí el registro de devolución)
+
+    END LOOP;
+    
+    CLOSE c_detalles;
+
+    -- 4. Marcar la venta como CANCELADA (Importante: NO la eliminamos, solo cambiamos el estado)
+    -- Si la eliminas (DELETE), pierdes la trazabilidad financiera.
+    UPDATE venta
+    SET estadopedido = 'CANCELADO', 
+        -- Podrías añadir un campo 'fecha_cancelacion' = NOW()
+        totalventa = 0 -- Se anula el valor financiero de la orden
+    WHERE idventa = p_id_venta;
+
+    -- 5. Mensaje de éxito (implícito)
+    RAISE NOTICE 'Venta % cancelada y stock revertido con éxito.', p_id_venta;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Si algo falla (ej. RAISE EXCEPTION), se hará un ROLLBACK automático
+        RAISE EXCEPTION 'Falló la cancelación de la venta %: %', p_id_venta, SQLERRM;
+END;
+$$;
+
+
+SELECT * FROM puntoentrega WHERE idpunto = 1;
+
+SELECT idventa, nombrepunto, direccioncompleta, estadopedido FROM vw_historial_ventas;
+SELECT * FROM puntoentrega WHERE nombrepunto = '*****';
+
+
+-- FUNCIÓN TRIGGER: Se ejecuta después de actualizar la tabla "venta"
+CREATE OR REPLACE FUNCTION fn_anular_venta_reporte()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Verificar si el cambio es de cualquier estado a CANCELADO
+    -- Esto garantiza que solo se active una vez.
+    IF OLD.estadopedido != 'CANCELADO' AND NEW.estadopedido = 'CANCELADO' THEN
+        
+        -- Insertar los detalles originales de la venta, pero con una CANTIDAD NEGATIVA.
+        -- Esto anula el impacto en los reportes basados en SUM(detalleventa.cantidad).
+        INSERT INTO detalleventa (idventa, idprod, cantidad, preciounitario)
+        SELECT 
+            NEW.idventa,        -- El ID de la venta cancelada
+            idprod,             
+            -cantidad,          -- Cantidad negativa para la anulación
+            preciounitario
+        FROM detalleventa
+        WHERE idventa = NEW.idventa AND cantidad > 0; -- Solo aplicar a las filas de venta originales
+
+    END IF;
+    
+    RETURN NEW; -- Continuar con la operación de UPDATE
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- TRIGGER: Se activa al actualizar el estado de una venta (por el procedimiento sp_cancelar_venta)
+CREATE OR REPLACE TRIGGER tr_anular_venta_reporte
+AFTER UPDATE ON venta
+FOR EACH ROW
+EXECUTE FUNCTION fn_anular_venta_reporte();
+
+
+UPDATE producto p
+SET cantstock = p.cantstock + (
+    SELECT COALESCE(SUM(dv.cantidad), 0)
+    FROM detalleventa dv
+    WHERE dv.idprod = p.idprod
+      AND dv.cantidad > 0 -- Solo sumamos las ventas, no las anulaciones
+);
+
+-- 2. Poner todas las ventas en estado "Pagado".
+UPDATE venta
+SET estadopedido = 'Pagado',
+    totalventa = (
+        SELECT COALESCE(SUM(dv.cantidad * dv.preciounitario), 0)
+        FROM detalleventa dv
+        WHERE dv.idventa = venta.idventa
+          AND dv.cantidad > 0 -- Volver a calcular el total sin considerar anulaciones
+    )
+WHERE estadopedido != 'Pagado'; -- Aplicar solo a las canceladas/entregadas
+
+-- 3. Eliminar cualquier fila de anulación si usaste el Trigger (cantidad negativa).
+DELETE FROM detalleventa
+WHERE cantidad < 0;
+
+
+-- Query para obtener el movimiento neto de productos
+SELECT
+    p.idprod,
+    p.titulo AS nombre_producto,
+    SUM(CASE WHEN dv.cantidad > 0 THEN dv.cantidad ELSE 0 END) AS unidades_vendidas, -- Suma solo positivos (ventas originales)
+    SUM(CASE WHEN dv.cantidad < 0 THEN -dv.cantidad ELSE 0 END) AS unidades_anuladas, -- Suma solo el valor absoluto de negativos (anulaciones)
+    SUM(dv.cantidad) AS movimiento_neto -- Impacto real en reportes (0 si se anula totalmente)
+FROM detalleventa dv
+JOIN producto p ON dv.idprod = p.idprod
+GROUP BY p.idprod, p.titulo
+ORDER BY unidades_vendidas DESC;
+
+
+CREATE TABLE log_auditoria_stock (
+    id_log SERIAL PRIMARY KEY,
+    id_prod INT NOT NULL,
+    fecha_cambio TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    stock_anterior INT,
+    stock_nuevo INT,
+    -- Podrías añadir un campo para saber quién hizo el cambio, si tu arquitectura lo permite
+    -- usuario_afectado INT 
+    FOREIGN KEY (id_prod) REFERENCES producto(idprod)
+);
+
+
+CREATE OR REPLACE FUNCTION fn_auditar_stock()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Solo auditar si el valor de cantstock realmente cambió entre el viejo (OLD) y el nuevo (NEW) registro
+    IF OLD.cantstock IS DISTINCT FROM NEW.cantstock THEN
+        INSERT INTO log_auditoria_stock (
+            id_prod, 
+            stock_anterior, 
+            stock_nuevo
+        )
+        VALUES (
+            NEW.idprod, 
+            OLD.cantstock, 
+            NEW.cantstock
+        );
+    END IF;
+    
+    RETURN NEW; 
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE TRIGGER tr_auditoria_stock
+AFTER UPDATE ON producto
+FOR EACH ROW
+EXECUTE FUNCTION fn_auditar_stock();
 
 -- (Nota: Para insertar una venta y su detalle, primero necesitas saber los IDs generados arriba)

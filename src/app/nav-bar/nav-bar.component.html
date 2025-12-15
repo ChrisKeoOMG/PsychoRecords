@@ -28,11 +28,30 @@
           <a class="nav-link" [routerLink]="['/qya']" routerLinkActive="active">FAQ</a>
         </li>
 
-        @if (isAdmin$ | async) {
-        <li class="nav-item">
-          <a class="nav-link fw-bold" [routerLink]="['/admin/inventario']" routerLinkActive="active">ADMIN</a>
-        </li>
-        }
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+          <div class="container-fluid">
+            <div class="collapse navbar-collapse" id="navbarNav">
+              <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                @if (isAdmin$ | async) {
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle text-warning" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                      Administración
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="adminDropdown">
+                      <li><a class="dropdown-item" [routerLink]="['/admin/inventario']">Inventario</a></li>
+                      
+                      <li><a class="dropdown-item" [routerLink]="['/admin/reportes']">Reportes Financieros</a></li>
+                      
+                      <li><hr class="dropdown-divider"></li>
+                      <li><a class="dropdown-item" href="#">Gestión de Usuarios</a></li>
+                    </ul>
+                  </li>
+                }
+              </ul>
+
+              </div>
+          </div>
+        </nav>
 
         <li class="nav-item">
           <a [routerLink]="['/carrito']" class="nav-link position-relative" title="Ver Carrito">

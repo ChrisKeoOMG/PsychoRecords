@@ -1,5 +1,11 @@
 <div class="container py-4">
-    <h1 class="mb-4">📜 Historial de Mis Pedidos</h1>
+
+    @if (isAdmin$ | async) {
+    <h1 class="mb-4 text-danger">⚠️ Gestión de Órdenes (MODO ADMINISTRADOR)</h1>
+    <p class="text-muted">Mostrando todas las ventas del sistema para gestión y cancelación.</p>
+    } @else {
+        <h1 class="mb-4">📜 Historial de Mis Pedidos</h1>
+    }
     <hr>
 
     @if (loading) {
@@ -47,6 +53,20 @@
             <div [id]="'collapse'+venta.idventa" class="accordion-collapse collapse"
                 [attr.aria-labelledby]="'heading'+venta.idventa" data-bs-parent="#historialAccordion">
                 <div class="accordion-body bg-light">
+
+                    @if (isAdmin$ | async) {
+                        @if (venta.estadopedido?.toUpperCase() !== 'CANCELADO') {
+                            <div class="mb-4 text-end">
+                                <button class="btn btn-danger" (click)="cancelarVenta(venta.idventa)">
+                                    <i class="bi bi-x-circle me-2"></i> Cancelar Venta y Revertir Stock
+                                </button>
+                            </div>
+                        } @else {
+                            <div class="mb-4 text-end text-danger fw-bold">
+                                Esta venta ya está CANCELADA.
+                            </div>
+                        }
+                    }
 
                     <div class="mb-3 p-3 border rounded bg-white">
                         <h6>Punto de Entrega Seleccionado:</h6>

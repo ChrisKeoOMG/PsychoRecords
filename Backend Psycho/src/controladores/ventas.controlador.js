@@ -96,28 +96,18 @@ const crearVenta = async (req, res) => {
 const getVentasByUsuario = async (req, res) => {
     const idUsuario = req.params.idUsuario;
 
-    // Consulta compleja para obtener la venta, el punto de entrega y los detalles de la venta
-    // las funciones de json_agg y json_build_object son para crear un json con los datos de la venta
+    // Consulta simple a la VISTA
     const queryText = `
         SELECT 
-            V."idventa", V."fecha", V."totalventa", V."estadopedido",
-            PE."nombrepunto", PE."direccioncompleta",
-            json_agg(
-                json_build_object(
-                    'iddetalle', DV."iddetalle",
-                    'titulo', P."titulo",
-                    'artista', P."artista",
-                    'cantidad', DV."cantidad",
-                    'precioUnitario', DV."preciounitario"
-                )
-            ) AS detalles
-        FROM "venta" V
-        JOIN "puntoentrega" PE ON V."idpunto" = PE."idpunto"
-        JOIN "detalleventa" DV ON V."idventa" = DV."idventa"
-        JOIN "producto" P ON DV."idprod" = P."idprod"
-        WHERE V."idusuario" = $1
-        GROUP BY V."idventa", PE."idpunto"
-        ORDER BY V."fecha" DESC;
+            "idventa", 
+            "fecha", 
+            "totalventa", 
+            "estadopedido",
+            "nombrepunto", 
+            "direccioncompleta", 
+            detalles 
+        FROM vw_historial_ventas 
+        WHERE "idusuario" = $1;
     `;
 
     try {
@@ -137,7 +127,94 @@ const getVentasByUsuario = async (req, res) => {
     }
 };
 
+
+
+const cancelarVenta = async (req, res) => {
+    // Declarar con let en el ámbito más alto de la función
+    let idVentaStr; 
+    let idVenta;
+
+    try {
+        // 1. Lectura del parámetro (usando el nombre minúsculas de la ruta)
+        idVentaStr = req.params.idventa; 
+        const idAdmin = req.header('x-user-id'); 
+
+        // 2. Validación y Conversión (Previene el error de tipo integer)
+        if (!idVentaStr || isNaN(Number(idVentaStr))) {
+            return res.status(400).json({ 
+                message: 'Error: El ID de venta proporcionado no es un número válido o está ausente.',
+                url: req.originalUrl // Útil para depuración
+            });
+        }
+        idVenta = Number(idVentaStr); // Convertir a número antes de usarlo en el query
+
+        // 3. Llamar al procedimiento almacenado
+        const queryText = `CALL sp_cancelar_venta($1, $2);`;
+        await db.query(queryText, [idVenta, idAdmin]); // Usamos el número
+
+        // 4. Éxito
+        res.status(200).json({ 
+            message: `Venta #${idVenta} cancelada y stock revertido con éxito.`,
+            idVenta: idVenta
+        });
+
+    } catch (error) {
+        // 5. Manejo de Error: idVenta está garantizado que existe aquí
+        console.error(`Error al cancelar venta ${idVenta}:`, error.message);
+        
+        // Manejo de errores de PL/pgSQL
+        let errorMessage = error.message.includes('Falló') ? 
+                            error.message.split('ERROR:  ')[1] : 
+                            'Error desconocido al intentar cancelar la venta.';
+
+        res.status(400).json({ message: errorMessage });
+    }
+};
+
+
+
+const getTodasLasVentas = async (req, res) => {
+    // Nota: El middleware verificarAdmin ya protege esta ruta.
+    
+    // Consulta simple a la VISTA sin filtro por usuario
+    const queryText = `
+        SELECT 
+            "idventa", 
+            "fecha", 
+            "totalventa", 
+            "estadopedido",
+            "nombrepunto", 
+            "direccioncompleta", 
+            detalles 
+        FROM vw_historial_ventas 
+        ORDER BY "fecha" DESC;
+    `;
+    
+    try {
+        const result = await db.query(queryText);
+        
+        const ventas = result.rows.map(venta => ({
+            idventa: venta.idventa,
+            fecha: venta.fecha,
+            totalventa: Number(venta.totalventa),
+            estadopedido: venta.estadopedido,
+            nombrepunto: venta.nombrepunto,
+            direccionCompleta: venta.direccioncompleta,
+            detalles: venta.detalles 
+            // Podrías añadir V.idusuario si lo necesitas en el frontend
+        }));
+
+        res.status(200).json(ventas);
+    } catch (error) {
+        console.error('Error al obtener todas las ventas:', error);
+        res.status(500).json({ message: 'Error interno del servidor al consultar todas las ventas.' });
+    }
+};
+
+
 module.exports = {
     crearVenta,
-    getVentasByUsuario
+    getVentasByUsuario,
+    cancelarVenta,
+    getTodasLasVentas
 };

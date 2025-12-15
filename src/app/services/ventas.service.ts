@@ -57,6 +57,15 @@ export class VentasService {
     private authService: AuthService
   ) { }
 
+
+  private getAdminHeaders(): HttpHeaders {
+        const userId = this.authService.getAuthHeader();
+        return new HttpHeaders({
+            'Content-Type': 'application/json',
+            'x-user-id': userId || '' // ¡Asegura que el valor se obtiene!
+        });
+  }
+
   /**
    * GET /api/puntos-entrega
    * Obtiene la lista de puntos de recogida.
@@ -85,5 +94,20 @@ export class VentasService {
     const historialUrl = `${this.apiUrl}/usuario/${idUsuario}`;
     // Asumimos que el AuthInterceptor añade el token
     return this.http.get<Venta[]>(historialUrl);
+  }
+
+  getTodasLasVentas(): Observable<Venta[]> {
+        const headers = this.getAdminHeaders();
+        return this.http.get<Venta[]>(`${this.apiUrl}/todas`, { headers });
+  }
+
+    /**
+     * PUT /api/ventas/cancelar/:idVenta - Llama al procedimiento almacenado de Node.js.
+     */
+  cancelarVenta(idventa: number): Observable<any> {
+        console.log(idventa);
+        const headers = this.getAdminHeaders();
+        const url = `${this.apiUrl}/cancelar/${idventa}`;
+        return this.http.put(url, {}, { headers });
   }
 }

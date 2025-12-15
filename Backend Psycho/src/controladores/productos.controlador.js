@@ -75,7 +75,6 @@ const actualizarProducto = async (req, res) => {
     const idProd = req.params.id;
     const { titulo, artista, generomus, aniolanzam, formato, condiciones, cantstock, precio } = req.body;
 
-    // Puedes usar la función COALESCE de SQL para actualizar solo los campos provistos
     const queryText = `
         UPDATE "producto"
         SET 
